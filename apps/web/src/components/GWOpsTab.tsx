@@ -7,10 +7,23 @@ function initials(name: string) {
   return name.split(" ").map((p) => p[0]).slice(0, 2).join("").toUpperCase();
 }
 
+function scoreNum(r: TourRecord): number {
+  const raw = r["Candidate Score (1-10)"];
+  const n = parseFloat(String(raw ?? ""));
+  return isNaN(n) ? 0 : n;
+}
+
+function isIneligible(r: TourRecord): boolean {
+  const s = scoreNum(r);
+  return s > 0 && s < 5;
+}
+
 interface RowState {
   startDate: string;
   nameSent: string;
   addedToShifts: string;
+  attendanceConfirmedPreList: string;
+  attendanceConfirmedPreShift: string;
 }
 
 export default function GWOpsTab() {
@@ -34,6 +47,8 @@ export default function GWOpsTab() {
       startDate: String(r["Start Date"] ?? ""),
       nameSent: String(r["Name sent on list"] ?? ""),
       addedToShifts: String(r["Added to Shifts"] ?? r["Added to shifts?"] ?? ""),
+      attendanceConfirmedPreList: String(r["Attendance Confirmed Pre-List"] ?? ""),
+      attendanceConfirmedPreShift: String(r["Attendance Confirmed Pre-Shift"] ?? ""),
     };
   }
 
@@ -49,11 +64,24 @@ export default function GWOpsTab() {
         "Start Date": state.startDate,
         "Name sent on list": state.nameSent,
         "Added to Shifts": state.addedToShifts,
+        "Attendance Confirmed Pre-List": state.attendanceConfirmedPreList,
+        "Attendance Confirmed Pre-Shift": state.attendanceConfirmedPreShift,
       },
     });
   }
 
-  const records = (data ?? []).filter((r) => r["Worker name"] || r["Worker Name"]);
+  const allRecords = (data ?? []).filter((r) => r["Worker name"] || r["Worker Name"]);
+
+  // Exclude turned-away candidates
+  const records = allRecords
+    .filter((r) => r["Turned Away"] !== "Y")
+    .sort((a, b) => {
+      // Score desc (ineligible sink to bottom within this sort)
+      const diff = scoreNum(b) - scoreNum(a);
+      if (diff !== 0) return diff;
+      // Tour date asc
+      return String(a["Tour Date"] ?? "").localeCompare(String(b["Tour Date"] ?? ""));
+    });
 
   if (isLoading) return <div style={{ padding: 24, color: "var(--gray-60)" }}><span className="spinner" /> Loading…</div>;
 
@@ -61,7 +89,9 @@ export default function GWOpsTab() {
     <div>
       <div style={{ marginBottom: 20 }}>
         <div style={{ fontSize: 15, fontWeight: 600, color: "var(--midnight-100)", marginBottom: 4 }}>GWOps Queue</div>
-        <div style={{ fontSize: 12, color: "var(--gray-60)" }}>Fill in Start Date, Name Sent on List, and Added to Shifts</div>
+        <div style={{ fontSize: 12, color: "var(--gray-60)" }}>
+          Candidates who attended the tour — confirm attendance and fill placement details
+        </div>
       </div>
 
       {!records.length ? (
@@ -73,30 +103,44 @@ export default function GWOpsTab() {
               <tr>
                 <th>Worker</th>
                 <th>Tour Date</th>
+                <th>Score</th>
+                <th>DT Clear</th>
+                <th>Doc Signed</th>
                 <th>BGC</th>
                 <th>Console</th>
                 <th>Start Date</th>
                 <th>Name Sent</th>
                 <th>Added to Shifts</th>
+                <th>Att. Pre-List</th>
+                <th>Att. Pre-Shift</th>
                 <th />
               </tr>
             </thead>
             <tbody>
               {records.map((r) => {
+                const ineligible = isIneligible(r);
+                const score = scoreNum(r);
                 const name = String(r["Worker name"] || r["Worker Name"] || "—");
                 const photo = r["Worker Picture"] ?? "";
                 const consoleLink = r["Console Link"] ?? "";
                 const bgcRaw = r["BG Results Clear?"] ?? r["BGC Results"] ?? "";
                 const bgcClear = bgcRaw === "Y" || bgcRaw === "ELIGIBLE";
+                const dtRaw = String(r["DT Results Clear"] ?? "");
+                const dtClear = dtRaw === "Y";
+                const docSigned = String(r["Doc Signed"] ?? "");
                 const state = getRow(r);
                 const isSaving = updateMutation.isPending && updateMutation.variables?.rowIndex === r._rowIndex;
 
+                const rowStyle: React.CSSProperties = ineligible
+                  ? { opacity: 0.6, background: "var(--red-5, #fff5f5)" }
+                  : {};
+
                 return (
-                  <tr key={r._rowIndex}>
+                  <tr key={r._rowIndex} style={rowStyle}>
                     <td>
                       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                         {photo
-                          ? <img src={photo} style={{ width: 32, height: 32, borderRadius: 6, objectFit: "cover", flexShrink: 0 }} />
+                          ? <img src={photo} style={{ width: 32, height: 32, borderRadius: 6, objectFit: "cover", flexShrink: 0 }} referrerPolicy="no-referrer" />
                           : <div style={{ width: 32, height: 32, borderRadius: 6, background: "var(--violet-10)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 600, color: "var(--violet-60)", flexShrink: 0 }}>{initials(name)}</div>
                         }
                         <div>
@@ -107,6 +151,26 @@ export default function GWOpsTab() {
                     </td>
                     <td>{r["Tour Date"] || "—"}</td>
                     <td>
+                      {score > 0 ? (
+                        <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                          <span style={{ fontWeight: 600 }}>{score}</span>
+                          {ineligible && (
+                            <span className="badge badge-red" style={{ fontSize: 10 }}>Ineligible</span>
+                          )}
+                        </span>
+                      ) : "—"}
+                    </td>
+                    <td>
+                      <span className={`badge ${dtClear ? "badge-green" : dtRaw ? "badge-orange" : "badge-gray"}`} style={{ fontSize: 10 }}>
+                        {dtClear ? "Clear" : dtRaw || "—"}
+                      </span>
+                    </td>
+                    <td>
+                      <span className={`badge ${docSigned === "Y" ? "badge-green" : docSigned ? "badge-orange" : "badge-gray"}`} style={{ fontSize: 10 }}>
+                        {docSigned === "Y" ? "Signed" : docSigned || "—"}
+                      </span>
+                    </td>
+                    <td>
                       <span className={`badge ${bgcClear ? "badge-green" : bgcRaw ? "badge-orange" : "badge-gray"}`} style={{ fontSize: 10 }}>
                         {bgcClear ? "Clear" : bgcRaw || "Pending"}
                       </span>
@@ -116,16 +180,58 @@ export default function GWOpsTab() {
                         ? <a href={consoleLink} target="_blank" rel="noreferrer" style={{ color: "var(--violet-60)", textDecoration: "none", fontSize: 12 }}>Open ↗</a>
                         : "—"}
                     </td>
-                    <td><input className="inline-date" type="date" value={state.startDate} onChange={(e) => setRow(r._rowIndex, { startDate: e.target.value })} /></td>
                     <td>
-                      <select className="inline-select" value={state.nameSent} onChange={(e) => setRow(r._rowIndex, { nameSent: e.target.value })}>
+                      <input
+                        className="inline-date"
+                        type="date"
+                        value={state.startDate}
+                        disabled={ineligible}
+                        onChange={(e) => setRow(r._rowIndex, { startDate: e.target.value })}
+                      />
+                    </td>
+                    <td>
+                      <select
+                        className="inline-select"
+                        value={state.nameSent}
+                        disabled={ineligible}
+                        onChange={(e) => setRow(r._rowIndex, { nameSent: e.target.value })}
+                      >
                         <option value="">—</option>
                         <option value="Y">Y</option>
                         <option value="N">N</option>
                       </select>
                     </td>
                     <td>
-                      <select className="inline-select" value={state.addedToShifts} onChange={(e) => setRow(r._rowIndex, { addedToShifts: e.target.value })}>
+                      <select
+                        className="inline-select"
+                        value={state.addedToShifts}
+                        disabled={ineligible}
+                        onChange={(e) => setRow(r._rowIndex, { addedToShifts: e.target.value })}
+                      >
+                        <option value="">—</option>
+                        <option value="Y">Y</option>
+                        <option value="N">N</option>
+                      </select>
+                    </td>
+                    <td>
+                      <select
+                        className="inline-select"
+                        value={state.attendanceConfirmedPreList}
+                        disabled={ineligible}
+                        onChange={(e) => setRow(r._rowIndex, { attendanceConfirmedPreList: e.target.value })}
+                      >
+                        <option value="">—</option>
+                        <option value="Y">Y</option>
+                        <option value="N">N</option>
+                      </select>
+                    </td>
+                    <td>
+                      <select
+                        className="inline-select"
+                        value={state.attendanceConfirmedPreShift}
+                        disabled={ineligible}
+                        onChange={(e) => setRow(r._rowIndex, { attendanceConfirmedPreShift: e.target.value })}
+                      >
                         <option value="">—</option>
                         <option value="Y">Y</option>
                         <option value="N">N</option>
@@ -134,13 +240,15 @@ export default function GWOpsTab() {
                     <td>
                       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                         <button
-                          disabled={isSaving}
+                          disabled={isSaving || ineligible}
                           onClick={() => saveRow(r)}
                           style={{
                             height: 28, padding: "0 12px", borderRadius: 6,
-                            background: "var(--violet-60)", color: "white",
+                            background: ineligible ? "var(--gray-20)" : "var(--violet-60)",
+                            color: ineligible ? "var(--gray-50)" : "white",
                             fontFamily: "Poppins, sans-serif", fontSize: 11, fontWeight: 500,
-                            border: "none", cursor: "pointer",
+                            border: "none",
+                            cursor: ineligible ? "not-allowed" : "pointer",
                           }}
                         >
                           {isSaving ? "…" : "Save"}

@@ -10,7 +10,17 @@ interface ToggleState {
   dtResultsClear: YN;
   thcPositive: YN;
   docSigned: YN;
+  turnedAway: YN;
 }
+
+const TURNED_AWAY_REASONS = [
+  "Language barrier",
+  "THC / intoxicated",
+  "Disengaged / poor attitude",
+  "Previously worked at Reach",
+  "Failed English assessment",
+  "Other",
+];
 
 function initials(name: string) {
   return name.split(" ").map((p) => p[0]).slice(0, 2).join("").toUpperCase();
@@ -46,7 +56,8 @@ export default function OnsiteTab() {
   const [schedule, setSchedule] = useState("");
   const [tourDate, setTourDate] = useState(new Date().toISOString().split("T")[0]);
   const [score, setScore] = useState("");
-  const [toggles, setToggles] = useState<ToggleState>({ dtPerformed: "", dtResultsClear: "", thcPositive: "", docSigned: "" });
+  const [toggles, setToggles] = useState<ToggleState>({ dtPerformed: "", dtResultsClear: "", thcPositive: "", docSigned: "", turnedAway: "" });
+  const [turnedAwayReason, setTurnedAwayReason] = useState("");
   const [notes, setNotes] = useState("");
   const [toast, setToast] = useState<{ msg: string; type: "success" | "error" } | null>(null);
   const searchRef = useRef<HTMLDivElement>(null);
@@ -79,7 +90,8 @@ export default function OnsiteTab() {
     setSchedule("");
     setTourDate(new Date().toISOString().split("T")[0]);
     setScore("");
-    setToggles({ dtPerformed: "", dtResultsClear: "", thcPositive: "", docSigned: "" });
+    setToggles({ dtPerformed: "", dtResultsClear: "", thcPositive: "", docSigned: "", turnedAway: "" });
+    setTurnedAwayReason("");
     setNotes("");
   }
 
@@ -108,6 +120,8 @@ export default function OnsiteTab() {
       "DT Results Clear": toggles.dtResultsClear,
       "THC Positive": toggles.thcPositive,
       "Doc Signed": toggles.docSigned,
+      "Turned Away": toggles.turnedAway,
+      "Turned Away Reason": toggles.turnedAway === "Y" ? turnedAwayReason : "",
       "Notes": notes,
     });
   }
@@ -248,7 +262,13 @@ export default function OnsiteTab() {
                   className="form-input" type="number" min="1" max="10" step="0.1"
                   placeholder="e.g. 7.5" value={score}
                   onChange={(e) => setScore(e.target.value)}
+                  style={{ borderColor: score && parseFloat(score) < 5 ? "var(--red-60)" : undefined }}
                 />
+                {score && parseFloat(score) < 5 && (
+                  <div style={{ marginTop: 4, fontSize: 11, color: "var(--red-70)", fontWeight: 500 }}>
+                    Score below 5 — candidate is automatically ineligible
+                  </div>
+                )}
               </div>
             </div>
 
@@ -267,6 +287,23 @@ export default function OnsiteTab() {
                   <YNToggle value={toggles[key]} onChange={(v) => setToggles((t) => ({ ...t, [key]: v }))} />
                 </div>
               ))}
+            </div>
+
+            <div className="divider" />
+            <div style={{ marginBottom: 16 }}>
+              <div className="form-group">
+                <label className="form-label">Turned Away</label>
+                <YNToggle value={toggles.turnedAway} onChange={(v) => setToggles((t) => ({ ...t, turnedAway: v }))} />
+              </div>
+              {toggles.turnedAway === "Y" && (
+                <div className="form-group" style={{ maxWidth: 320, marginTop: 12 }}>
+                  <label className="form-label">Reason</label>
+                  <select className="form-select" value={turnedAwayReason} onChange={(e) => setTurnedAwayReason(e.target.value)}>
+                    <option value="">Select reason</option>
+                    {TURNED_AWAY_REASONS.map((r) => <option key={r}>{r}</option>)}
+                  </select>
+                </div>
+              )}
             </div>
 
             <div className="divider" />

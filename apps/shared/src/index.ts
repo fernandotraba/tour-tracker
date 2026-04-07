@@ -29,6 +29,8 @@ export interface TourRecord {
   "THC Positive": string;
   "Doc Signed": string;
   "Notes": string;
+  "Turned Away": string;
+  "Turned Away Reason": string;
   // GWOps
   "Email": string;
   "Phone Number": string;
@@ -36,6 +38,8 @@ export interface TourRecord {
   "Start Date": string;
   "Name sent on list": string;
   "Added to Shifts": string;
+  "Attendance Confirmed Pre-List": string;
+  "Attendance Confirmed Pre-Shift": string;
   // NY WOps
   "Paid for tour?": string;
   "BG Results Clear?": string;

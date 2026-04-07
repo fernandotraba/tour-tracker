@@ -36,7 +36,8 @@ export default function NYWOpsTab() {
     setRowState((s) => ({ ...s, [rowIndex]: { ...getRow({ _rowIndex: rowIndex } as TourRecord), ...update } }));
   }
 
-  const records = (data ?? []).filter((r) => r["Worker name"] || r["Worker Name"]);
+  const records = (data ?? [])
+    .filter((r) => (r["Worker name"] || r["Worker Name"]) && r["Turned Away"] !== "Y");
 
   if (isLoading) return <div style={{ padding: 24, color: "var(--gray-60)" }}><span className="spinner" /> Loading…</div>;
 
@@ -67,7 +68,9 @@ export default function NYWOpsTab() {
               {records.map((r) => {
                 const name = String(r["Worker name"] || r["Worker Name"] || "—");
                 const photo = r["Worker Picture"] ?? "";
-                const score = r["Candidate Score (1-10)"] ?? "—";
+                const scoreRaw = r["Candidate Score (1-10)"] ?? "";
+                const scoreN = parseFloat(String(scoreRaw));
+                const scoreIneligible = !isNaN(scoreN) && scoreN > 0 && scoreN < 5;
                 const dtClear = r["DT Results Clear"] ?? "";
                 const state = getRow(r);
                 const isSaving = updateMutation.isPending && updateMutation.variables?.rowIndex === r._rowIndex;
@@ -84,7 +87,16 @@ export default function NYWOpsTab() {
                       </div>
                     </td>
                     <td>{r["Tour Date"] || "—"}</td>
-                    <td><span style={{ fontWeight: 600 }}>{score}</span></td>
+                    <td>
+                      {scoreRaw ? (
+                        <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                          <span style={{ fontWeight: 600 }}>{scoreRaw}</span>
+                          {scoreIneligible && (
+                            <span className="badge badge-red" style={{ fontSize: 10 }}>Ineligible</span>
+                          )}
+                        </span>
+                      ) : "—"}
+                    </td>
                     <td>
                       <span className={`badge ${dtClear === "Y" ? "badge-green" : dtClear === "N" ? "badge-red" : "badge-gray"}`} style={{ fontSize: 10 }}>
                         {dtClear || "—"}
