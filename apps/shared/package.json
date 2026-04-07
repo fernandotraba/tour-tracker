@@ -1,0 +1,7 @@
+{
+  "name": "@tour-tracker/shared",
+  "private": true,
+  "exports": {
+    ".": "./src/index.ts"
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "name": "tour-tracker",
+  "private": true,
+  "workspaces": ["apps/*"],
+  "scripts": {
+    "dev": "bun run --parallel --filter '*' dev",
+    "build": "bun run --filter apps/web build && bun run --filter apps/api build",
+    "lint": "bun run --parallel --filter '*' lint",
+    "typecheck": "bun run --parallel --filter '*' typecheck"
+  }
+}
