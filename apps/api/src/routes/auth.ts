@@ -16,7 +16,7 @@ auth.post("/verify", async (c) => {
   if (!res.ok) return c.json({ error: "Invalid Google token" }, 401);
 
   const info = (await res.json()) as { hd?: string; email: string; name: string; picture: string };
-  if (info.hd !== "traba.work")
+  if (info.hd !== "traba.work" && info.hd !== "ext.traba.work")
     return c.json({ error: "Access restricted to @traba.work accounts" }, 403);
 
   const token = await new SignJWT({ email: info.email, name: info.name, picture: info.picture })
