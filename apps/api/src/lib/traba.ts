@@ -3,10 +3,7 @@ import type { Worker } from "@tour-tracker/shared";
 const MCP_URL = process.env.TRABA_MCP_URL ?? "https://ops-prod.traba.tech/v1/mcp";
 const CONSOLE_BASE = "https://console.traba.work/workers";
 
-async function callMcp(toolName: string, args: Record<string, unknown>) {
-  const token = process.env.TRABA_API_TOKEN;
-  if (!token) throw new Error("TRABA_API_TOKEN not configured — ask engineering for a service account token");
-
+async function callMcp(toolName: string, args: Record<string, unknown>, token: string) {
   const res = await fetch(MCP_URL, {
     method: "POST",
     headers: {
@@ -64,13 +61,13 @@ function formatWorker(w: any): Worker {
   };
 }
 
-export async function searchWorkers(query: string): Promise<Worker[]> {
+export async function searchWorkers(query: string, token: string): Promise<Worker[]> {
   const digits = query.replace(/\D/g, "");
   const isPhone = digits.length >= 7 && /^[\d\s\-()+]+$/.test(query.trim());
 
   if (isPhone) {
     const e164 = `+1${digits.replace(/^1/, "")}`;
-    const result = (await callMcp("get_worker", { phone: e164 })) as { worker?: unknown };
+    const result = (await callMcp("get_worker", { phone: e164 }, token)) as { worker?: unknown };
     if (!result?.worker) return [];
     return [formatWorker(result.worker)];
   }
@@ -79,13 +76,13 @@ export async function searchWorkers(query: string): Promise<Worker[]> {
   const args: Record<string, unknown> = { firstName: parts[0], limit: 8 };
   if (parts.length > 1) args.lastName = parts.slice(1).join(" ");
 
-  const result = (await callMcp("raw_worker_search", args)) as { workers?: Array<{ id: string }> };
+  const result = (await callMcp("raw_worker_search", args, token)) as { workers?: Array<{ id: string }> };
   if (!result?.workers?.length) return [];
 
   const profiles = await Promise.all(
     result.workers.slice(0, 5).map(async (w) => {
       try {
-        const full = (await callMcp("get_worker", { id: w.id })) as { worker?: unknown };
+        const full = (await callMcp("get_worker", { id: w.id }, token)) as { worker?: unknown };
         return full?.worker ? formatWorker(full.worker) : null;
       } catch {
         return null;

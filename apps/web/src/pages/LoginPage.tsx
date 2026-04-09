@@ -16,7 +16,7 @@ export default function LoginPage() {
       setError(null);
       try {
         const data: AuthResponse = await verifyGoogleToken(response.access_token);
-        login({ email: data.email, name: data.name, picture: data.picture, token: data.token });
+        login({ email: data.email, name: data.name, picture: data.picture, token: data.token, googleToken: response.access_token });
       } catch (err) {
         setError(err instanceof Error ? err.message : "Login failed");
       } finally {

@@ -14,7 +14,7 @@ app.use(
   "/api/*",
   cors({
     origin: ["http://localhost:5173", "http://localhost:3000"],
-    allowHeaders: ["Authorization", "Content-Type"],
+    allowHeaders: ["Authorization", "Content-Type", "X-Google-Token"],
     allowMethods: ["GET", "POST", "PATCH", "OPTIONS"],
   })
 );

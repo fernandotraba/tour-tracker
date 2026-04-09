@@ -3,6 +3,7 @@ import type { SessionUser } from "@tour-tracker/shared";
 
 export interface AuthState extends SessionUser {
   token: string;
+  googleToken: string;
 }
 
 export const AUTH_KEY = "tour_tracker_session";

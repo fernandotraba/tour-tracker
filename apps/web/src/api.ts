@@ -1,23 +1,23 @@
 import { AUTH_KEY, clearSession } from "./auth";
 import type { Worker, TourRecord, AuthResponse } from "@tour-tracker/shared";
 
-function getToken(): string | null {
+function getSession(): { token: string; googleToken?: string } | null {
   try {
     const raw = localStorage.getItem(AUTH_KEY);
-    if (!raw) return null;
-    return (JSON.parse(raw) as { token: string }).token;
+    return raw ? (JSON.parse(raw) as { token: string; googleToken?: string }) : null;
   } catch {
     return null;
   }
 }
 
-async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
-  const token = getToken();
+async function apiFetch<T>(path: string, options?: RequestInit & { googleToken?: string }): Promise<T> {
+  const session = getSession();
   const res = await fetch(path, {
     ...options,
     headers: {
       "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(session?.token ? { Authorization: `Bearer ${session.token}` } : {}),
+      ...(options?.googleToken ? { "X-Google-Token": options.googleToken } : {}),
       ...(options?.headers ?? {}),
     },
   });
@@ -41,8 +41,10 @@ export async function verifyGoogleToken(accessToken: string): Promise<AuthRespon
 }
 
 export async function searchWorkers(q: string): Promise<Worker[]> {
+  const session = getSession();
   const data = await apiFetch<{ workers: Worker[] }>(
-    `/api/workers/search?q=${encodeURIComponent(q)}`
+    `/api/workers/search?q=${encodeURIComponent(q)}`,
+    { googleToken: session?.googleToken }
   );
   return data.workers;
 }
