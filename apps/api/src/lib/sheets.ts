@@ -1,7 +1,7 @@
 import { google } from "googleapis";
 import type { TourRecord } from "@tour-tracker/shared";
 
-const SHEET_ID = "1UwV4aSCWyKDLbKdQj31aT1EJ6BtPcEjCQ4UfS_MaLS4";
+const SHEET_ID = "10K_wZq-BVnl_56YxCNRhO8imtLRL53z5p9PtkxvIQ6U";
 const SHEET_GID = "2073822165";
 
 let sheetsClient: ReturnType<typeof google.sheets> | null = null;

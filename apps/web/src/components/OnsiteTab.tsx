@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { searchWorkers, createTourRecord } from "../api";
 import type { Worker } from "@tour-tracker/shared";
@@ -64,10 +64,11 @@ export default function OnsiteTab() {
 
   const debouncedQuery = useDebounce(query, 400);
 
-  const { data: workers, isFetching: searching } = useQuery({
+  const { data: workers, isFetching: searching, error: searchError } = useQuery({
     queryKey: ["workers", debouncedQuery],
     queryFn: () => searchWorkers(debouncedQuery),
     enabled: debouncedQuery.trim().length >= 2,
+    retry: false,
   });
 
   const submitMutation = useMutation({
@@ -201,6 +202,7 @@ export default function OnsiteTab() {
             <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
           </svg>
           <p style={{ fontSize: 14 }}>Search for a worker above to start an entry</p>
+          {searchError && <p style={{ fontSize: 12, color: "var(--red-70)", marginTop: 8 }}>{(searchError as Error).message}</p>}
         </div>
       ) : (
         <div>
@@ -352,9 +354,9 @@ export default function OnsiteTab() {
 
 function useDebounce<T>(value: T, delay: number): T {
   const [debounced, setDebounced] = useState(value);
-  const timerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const cb = useCallback(() => { setDebounced(value); }, [value]);
-  if (timerRef.current) clearTimeout(timerRef.current);
-  timerRef.current = setTimeout(cb, delay);
+  useEffect(() => {
+    const timer = setTimeout(() => setDebounced(value), delay);
+    return () => clearTimeout(timer);
+  }, [value, delay]);
   return debounced;
 }

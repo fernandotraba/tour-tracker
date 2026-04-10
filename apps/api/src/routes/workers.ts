@@ -6,10 +6,14 @@ const workers = new Hono();
 workers.get("/search", async (c) => {
   const q = c.req.query("q");
   if (!q || q.trim().length < 2) return c.json({ workers: [] });
-  const googleToken = c.req.header("X-Google-Token");
-  if (!googleToken) return c.json({ error: "Missing Google token" }, 401);
-  const results = await searchWorkers(q.trim(), googleToken);
-  return c.json({ workers: results });
+  try {
+    const results = await searchWorkers(q.trim());
+    return c.json({ workers: results });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    console.error("[workers/search]", msg);
+    return c.json({ error: msg }, 500);
+  }
 });
 
 export default workers;

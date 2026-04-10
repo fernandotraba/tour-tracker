@@ -3,14 +3,37 @@ import type { Worker } from "@tour-tracker/shared";
 const MCP_URL = process.env.TRABA_MCP_URL ?? "https://ops-prod.traba.tech/v1/mcp";
 const CONSOLE_BASE = "https://console.traba.work/workers";
 
-async function callMcp(toolName: string, args: Record<string, unknown>, token: string) {
+// Cloudflare Access service token — required to reach ops-prod.traba.tech server-to-server.
+// Obtain CF_ACCESS_CLIENT_ID and CF_ACCESS_CLIENT_SECRET from Sumeet (Cloudflare Zero Trust dashboard,
+// under Access > Service Tokens, for the ops-prod application).
+const CF_CLIENT_ID = process.env.CF_ACCESS_CLIENT_ID;
+const CF_CLIENT_SECRET = process.env.CF_ACCESS_CLIENT_SECRET;
+
+function getCfHeaders(): Record<string, string> {
+  if (!CF_CLIENT_ID || !CF_CLIENT_SECRET) {
+    throw new Error(
+      "Cloudflare service token not configured. Set CF_ACCESS_CLIENT_ID and CF_ACCESS_CLIENT_SECRET. " +
+      "Ask Sumeet for these values from the Cloudflare Zero Trust dashboard (Access > Service Tokens)."
+    );
+  }
+  return {
+    "CF-Access-Client-Id": CF_CLIENT_ID,
+    "CF-Access-Client-Secret": CF_CLIENT_SECRET,
+  };
+}
+
+async function callMcp(toolName: string, args: Record<string, unknown>, token?: string) {
+  const cfHeaders = getCfHeaders();
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    Accept: "application/json, text/event-stream",
+    ...cfHeaders,
+  };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
   const res = await fetch(MCP_URL, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Accept: "application/json, text/event-stream",
-      Authorization: `Bearer ${token}`,
-    },
+    headers,
     body: JSON.stringify({
       jsonrpc: "2.0",
       method: "tools/call",
@@ -61,7 +84,7 @@ function formatWorker(w: any): Worker {
   };
 }
 
-export async function searchWorkers(query: string, token: string): Promise<Worker[]> {
+export async function searchWorkers(query: string, token?: string): Promise<Worker[]> {
   const digits = query.replace(/\D/g, "");
   const isPhone = digits.length >= 7 && /^[\d\s\-()+]+$/.test(query.trim());
 
