@@ -9,15 +9,17 @@ import recordRoutes from "./routes/records.js";
 
 const app = new Hono();
 
-// Dev CORS (Vite runs on :5173, API on :3000)
-app.use(
-  "/api/*",
-  cors({
-    origin: ["http://localhost:5173", "http://localhost:3000"],
-    allowHeaders: ["Authorization", "Content-Type", "X-Google-Token"],
-    allowMethods: ["GET", "POST", "PATCH", "OPTIONS"],
-  })
-);
+// CORS for local dev only
+if (process.env.NODE_ENV !== "production") {
+  app.use(
+    "/api/*",
+    cors({
+      origin: ["http://localhost:5173", "http://localhost:3000"],
+      allowHeaders: ["Authorization", "Content-Type", "X-Google-Token"],
+      allowMethods: ["GET", "POST", "PATCH", "OPTIONS"],
+    })
+  );
+}
 
 // ── Auth (no middleware — you need this to GET a session) ──────────────────────
 app.route("/api/auth", authRoutes);
@@ -27,9 +29,12 @@ app.use("/api/*", requireAuth);
 app.route("/api/workers", workerRoutes);
 app.route("/api/tour-records", recordRoutes);
 
-// ── Serve frontend in production ───────────────────────────────────────────────
-app.use("/*", serveStatic({ root: "../web/dist" }));
-app.get("*", serveStatic({ path: "../web/dist/index.html" }));
+// ── Serve frontend ─────────────────────────────────────────────────────────────
+// Production: Railway runs from repo root, so path is apps/web/dist
+// Dev: bun runs from apps/api, so path is ../web/dist
+const staticRoot = process.env.NODE_ENV === "production" ? "apps/web/dist" : "../web/dist";
+app.use("/*", serveStatic({ root: staticRoot }));
+app.get("*", serveStatic({ path: `${staticRoot}/index.html` }));
 
 const PORT = parseInt(process.env.PORT ?? "3000", 10);
 serve({ fetch: app.fetch, port: PORT }, () => {
