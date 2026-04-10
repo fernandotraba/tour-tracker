@@ -60,7 +60,7 @@ export default function NYWOpsTab() {
                 <th>Score</th>
                 <th>DT Clear</th>
                 <th>Paid for Tour</th>
-                <th>BGC Results</th>
+                <th>Essential BG Results</th>
                 <th />
               </tr>
             </thead>
