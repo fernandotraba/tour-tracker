@@ -21,9 +21,6 @@ function isIneligible(r: TourRecord): boolean {
 interface RowState {
   startDate: string;
   nameSent: string;
-  addedToShifts: string;
-  attendanceConfirmedPreList: string;
-  attendanceConfirmedPreShift: string;
 }
 
 export default function GWOpsTab() {
@@ -46,9 +43,6 @@ export default function GWOpsTab() {
     return rowState[r._rowIndex] ?? {
       startDate: String(r["Start Date"] ?? ""),
       nameSent: String(r["Name sent on list"] ?? ""),
-      addedToShifts: String(r["Added to Shifts"] ?? r["Added to shifts?"] ?? ""),
-      attendanceConfirmedPreList: String(r["Attendance Confirmed Pre-List"] ?? ""),
-      attendanceConfirmedPreShift: String(r["Attendance Confirmed Pre-Shift"] ?? ""),
     };
   }
 
@@ -63,9 +57,6 @@ export default function GWOpsTab() {
       payload: {
         "Start Date": state.startDate,
         "Name sent on list": state.nameSent,
-        "Added to Shifts": state.addedToShifts,
-        "Attendance Confirmed Pre-List": state.attendanceConfirmedPreList,
-        "Attendance Confirmed Pre-Shift": state.attendanceConfirmedPreShift,
       },
     });
   }
@@ -111,9 +102,6 @@ export default function GWOpsTab() {
                 <th>Console</th>
                 <th>Start Date</th>
                 <th>Name Sent</th>
-                <th>Added to Shifts</th>
-                <th>Att. Pre-List</th>
-                <th>Att. Pre-Shift</th>
                 <th />
               </tr>
             </thead>
@@ -207,42 +195,6 @@ export default function GWOpsTab() {
                         value={state.nameSent}
                         disabled={ineligible}
                         onChange={(e) => setRow(r._rowIndex, { nameSent: e.target.value })}
-                      >
-                        <option value="">—</option>
-                        <option value="Y">Y</option>
-                        <option value="N">N</option>
-                      </select>
-                    </td>
-                    <td>
-                      <select
-                        className="inline-select"
-                        value={state.addedToShifts}
-                        disabled={ineligible}
-                        onChange={(e) => setRow(r._rowIndex, { addedToShifts: e.target.value })}
-                      >
-                        <option value="">—</option>
-                        <option value="Y">Y</option>
-                        <option value="N">N</option>
-                      </select>
-                    </td>
-                    <td>
-                      <select
-                        className="inline-select"
-                        value={state.attendanceConfirmedPreList}
-                        disabled={ineligible}
-                        onChange={(e) => setRow(r._rowIndex, { attendanceConfirmedPreList: e.target.value })}
-                      >
-                        <option value="">—</option>
-                        <option value="Y">Y</option>
-                        <option value="N">N</option>
-                      </select>
-                    </td>
-                    <td>
-                      <select
-                        className="inline-select"
-                        value={state.attendanceConfirmedPreShift}
-                        disabled={ineligible}
-                        onChange={(e) => setRow(r._rowIndex, { attendanceConfirmedPreShift: e.target.value })}
                       >
                         <option value="">—</option>
                         <option value="Y">Y</option>
