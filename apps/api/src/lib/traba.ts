@@ -1,117 +1,91 @@
 import type { Worker } from "@tour-tracker/shared";
 
-const MCP_URL = process.env.TRABA_MCP_URL ?? "https://ops-prod.traba.tech/v1/mcp";
+const TRABA_API = "https://prod.traba.tech/v1";
 const CONSOLE_BASE = "https://console.traba.work/workers";
 
-// Cloudflare Access service token — required to reach ops-prod.traba.tech server-to-server.
-// Obtain CF_ACCESS_CLIENT_ID and CF_ACCESS_CLIENT_SECRET from Sumeet (Cloudflare Zero Trust dashboard,
-// under Access > Service Tokens, for the ops-prod application).
-const CF_CLIENT_ID = process.env.CF_ACCESS_CLIENT_ID;
-const CF_CLIENT_SECRET = process.env.CF_ACCESS_CLIENT_SECRET;
-
-function getCfHeaders(): Record<string, string> {
-  if (!CF_CLIENT_ID || !CF_CLIENT_SECRET) {
-    throw new Error(
-      "Cloudflare service token not configured. Set CF_ACCESS_CLIENT_ID and CF_ACCESS_CLIENT_SECRET. " +
-      "Ask Sumeet for these values from the Cloudflare Zero Trust dashboard (Access > Service Tokens)."
-    );
-  }
-  return {
-    "CF-Access-Client-Id": CF_CLIENT_ID,
-    "CF-Access-Client-Secret": CF_CLIENT_SECRET,
-  };
+function getToken(userToken?: string): string {
+  const token = userToken ?? process.env.TRABA_API_TOKEN;
+  if (!token) throw new Error("No Traba token available. Set TRABA_API_TOKEN or pass user token.");
+  return token.startsWith("Bearer ") ? token : `Bearer ${token}`;
 }
 
-async function callMcp(toolName: string, args: Record<string, unknown>, token?: string) {
-  const cfHeaders = getCfHeaders();
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-    Accept: "application/json, text/event-stream",
-    ...cfHeaders,
-  };
-  if (token) headers["Authorization"] = `Bearer ${token}`;
-
-  const res = await fetch(MCP_URL, {
-    method: "POST",
-    headers,
-    body: JSON.stringify({
-      jsonrpc: "2.0",
-      method: "tools/call",
-      params: { name: toolName, arguments: args },
-      id: Date.now(),
-    }),
+async function trabaFetch<T>(path: string, token: string, options: RequestInit = {}): Promise<T> {
+  const res = await fetch(`${TRABA_API}${path}`, {
+    ...options,
+    headers: {
+      Authorization: token,
+      "Content-Type": "application/json",
+      ...(options.headers as Record<string, string> ?? {}),
+    },
   });
-
   if (!res.ok) throw new Error(`Traba API ${res.status}: ${await res.text()}`);
-
-  const contentType = res.headers.get("content-type") ?? "";
-
-  if (contentType.includes("text/event-stream")) {
-    const text = await res.text();
-    for (const line of text.split("\n").filter((l) => l.startsWith("data: "))) {
-      try {
-        const parsed = JSON.parse(line.slice(6)) as { result?: { content?: Array<{ text: string }> } };
-        const txt = parsed.result?.content?.[0]?.text;
-        if (txt) return JSON.parse(txt);
-      } catch {}
-    }
-    throw new Error("Could not parse SSE response");
-  }
-
-  const data = (await res.json()) as { error?: { message: string }; result?: { content?: Array<{ text: string }> } };
-  if (data.error) throw new Error(data.error.message);
-  const txt = data.result?.content?.[0]?.text;
-  if (!txt) throw new Error("Empty result from Traba API");
-  return JSON.parse(txt);
+  return res.json() as Promise<T>;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function formatWorker(w: any): Worker {
-  const bgc = w.backgroundCheck as { assessment?: string } | undefined;
+  const bgc = (w.backgroundCheck ?? w.workerMetric?.backgroundCheck) as { assessment?: string } | undefined;
   const assessment = bgc?.assessment ?? null;
+  const id = (w.id ?? w.uid) as string;
   return {
-    id: w.uid as string,
+    id,
     name: `${w.firstName} ${w.lastName}`,
     firstName: w.firstName as string,
     lastName: w.lastName as string,
     email: (w.email as string) ?? "",
     phone: (w.phoneNumber as string) ?? "",
     photoUrl: (w.photoUrl as string) ?? "",
-    consoleUrl: `${CONSOLE_BASE}/${w.uid}`,
+    consoleUrl: `${CONSOLE_BASE}/${id}`,
     accountStatus: (w.accountStatus as string) ?? "",
     bgcClear: assessment === "ELIGIBLE",
     bgcLabel: assessment?.replace(/_/g, " ") ?? "Pending",
   };
 }
 
-export async function searchWorkers(query: string, token?: string): Promise<Worker[]> {
+export async function searchWorkers(query: string, userToken?: string): Promise<Worker[]> {
+  const token = getToken(userToken);
+
   const digits = query.replace(/\D/g, "");
   const isPhone = digits.length >= 7 && /^[\d\s\-()+]+$/.test(query.trim());
 
   if (isPhone) {
-    const e164 = `+1${digits.replace(/^1/, "")}`;
-    const result = (await callMcp("get_worker", { phone: e164 }, token)) as { worker?: unknown };
-    if (!result?.worker) return [];
-    return [formatWorker(result.worker)];
+    const phoneNumber = digits.length === 10 ? `+1${digits}` : `+${digits}`;
+    const body = {
+      parameters: { phoneNumber, accountStatuses: ["APPROVED"] },
+      includes: { workerMetric: true },
+      select: {
+        accountStatus: ["accountStatus"],
+        worker: ["id", "firstName", "lastName", "phoneNumber", "photoUrl"],
+      },
+      withCount: true,
+    };
+    const data = await trabaFetch<{ workers?: unknown[] }>(
+      "/workers/search?startAt=0&limit=5&orderBy=firstName&sortOrder=asc",
+      token,
+      { method: "POST", body: JSON.stringify(body) }
+    );
+    return (data.workers ?? []).map(formatWorker);
   }
 
   const parts = query.trim().split(/\s+/);
-  const args: Record<string, unknown> = { firstName: parts[0], limit: 8 };
-  if (parts.length > 1) args.lastName = parts.slice(1).join(" ");
+  const body: Record<string, unknown> = {
+    parameters: {
+      firstName: parts[0],
+      ...(parts.length > 1 && { lastName: parts.slice(1).join(" ") }),
+      accountStatuses: ["APPROVED"],
+    },
+    includes: { workerMetric: true },
+    select: {
+      accountStatus: ["accountStatus"],
+      worker: ["id", "firstName", "lastName", "phoneNumber", "photoUrl"],
+    },
+    withCount: true,
+  };
 
-  const result = (await callMcp("raw_worker_search", args, token)) as { workers?: Array<{ id: string }> };
-  if (!result?.workers?.length) return [];
-
-  const profiles = await Promise.all(
-    result.workers.slice(0, 5).map(async (w) => {
-      try {
-        const full = (await callMcp("get_worker", { id: w.id }, token)) as { worker?: unknown };
-        return full?.worker ? formatWorker(full.worker) : null;
-      } catch {
-        return null;
-      }
-    })
+  const data = await trabaFetch<{ workers?: unknown[] }>(
+    "/workers/search?startAt=0&limit=8&orderBy=firstName&sortOrder=asc",
+    token,
+    { method: "POST", body: JSON.stringify(body) }
   );
-
-  return profiles.filter((p): p is Worker => p !== null);
+  return (data.workers ?? []).map(formatWorker);
 }
