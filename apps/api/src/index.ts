@@ -6,6 +6,7 @@ import { requireAuth } from "./auth.js";
 import authRoutes from "./routes/auth.js";
 import workerRoutes from "./routes/workers.js";
 import recordRoutes from "./routes/records.js";
+import startListRoutes from "./routes/startList.js";
 
 const app = new Hono();
 
@@ -28,6 +29,7 @@ app.route("/api/auth", authRoutes);
 app.use("/api/*", requireAuth);
 app.route("/api/workers", workerRoutes);
 app.route("/api/tour-records", recordRoutes);
+app.route("/api/start-list", startListRoutes);
 
 // ── Serve frontend ─────────────────────────────────────────────────────────────
 // Production: Railway runs from repo root, so path is apps/web/dist

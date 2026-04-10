@@ -61,6 +61,16 @@ export async function createTourRecord(payload: Partial<TourRecord>): Promise<vo
   });
 }
 
+export async function sendToStartList(
+  shift: string,
+  workers: Array<{ name: string; email: string }>
+): Promise<{ count: number }> {
+  return apiFetch<{ count: number }>("/api/start-list", {
+    method: "POST",
+    body: JSON.stringify({ shift, workers }),
+  });
+}
+
 export async function updateTourRecord(
   rowIndex: number,
   payload: Partial<TourRecord>

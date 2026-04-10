@@ -1,7 +1,9 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getTourRecords, updateTourRecord } from "../api";
+import { getTourRecords, updateTourRecord, sendToStartList } from "../api";
 import type { TourRecord } from "@tour-tracker/shared";
+
+const SHIFTS = ["Front Half", "Back Half", "Night Shift"] as const;
 
 function initials(name: string) {
   return name.split(" ").map((p) => p[0]).slice(0, 2).join("").toUpperCase();
@@ -28,6 +30,23 @@ export default function GWOpsTab() {
   const { data, isLoading } = useQuery({ queryKey: ["records"], queryFn: getTourRecords });
   const [rowState, setRowState] = useState<Record<number, RowState>>({});
   const [saved, setSaved] = useState<Record<number, boolean>>({});
+  const [showSendModal, setShowSendModal] = useState(false);
+  const [sendShift, setSendShift] = useState<string>("Front Half");
+  const [sendToast, setSendToast] = useState<{ msg: string; type: "success" | "error" } | null>(null);
+
+  const sendMutation = useMutation({
+    mutationFn: ({ shift, workers }: { shift: string; workers: Array<{ name: string; email: string }> }) =>
+      sendToStartList(shift, workers),
+    onSuccess: (res) => {
+      setShowSendModal(false);
+      setSendToast({ msg: `${res.count} worker${res.count === 1 ? "" : "s"} sent to ${sendShift} start list`, type: "success" });
+      setTimeout(() => setSendToast(null), 4000);
+    },
+    onError: (e) => {
+      setSendToast({ msg: e instanceof Error ? e.message : "Failed to send", type: "error" });
+      setTimeout(() => setSendToast(null), 4000);
+    },
+  });
 
   const updateMutation = useMutation({
     mutationFn: ({ rowIndex, payload }: { rowIndex: number; payload: Partial<TourRecord> }) =>
@@ -78,12 +97,91 @@ export default function GWOpsTab() {
 
   return (
     <div>
-      <div style={{ marginBottom: 20 }}>
-        <div style={{ fontSize: 15, fontWeight: 600, color: "var(--midnight-100)", marginBottom: 4 }}>GWOps Queue</div>
-        <div style={{ fontSize: 12, color: "var(--gray-60)" }}>
-          Candidates who attended the tour — confirm attendance and fill placement details
+      <div style={{ marginBottom: 20, display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
+        <div>
+          <div style={{ fontSize: 15, fontWeight: 600, color: "var(--midnight-100)", marginBottom: 4 }}>GWOps Queue</div>
+          <div style={{ fontSize: 12, color: "var(--gray-60)" }}>
+            Candidates who attended the tour — confirm attendance and fill placement details
+          </div>
         </div>
+        <button
+          className="btn btn-primary btn-sm"
+          onClick={() => setShowSendModal(true)}
+          disabled={!records.length}
+        >
+          Send to Start List
+        </button>
       </div>
+
+      {/* Send to Start List modal */}
+      {showSendModal && (() => {
+        const eligible = records.filter((r) => !isIneligible(r) && getRow(r).startDate);
+        return (
+          <div style={{
+            position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", zIndex: 200,
+            display: "flex", alignItems: "center", justifyContent: "center",
+          }}>
+            <div style={{
+              background: "var(--white)", borderRadius: 14, padding: 28,
+              width: 420, maxWidth: "90vw", boxShadow: "0 8px 32px rgba(0,0,0,0.14)",
+            }}>
+              <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 4 }}>Send to Start List</div>
+              <div style={{ fontSize: 12, color: "var(--gray-60)", marginBottom: 20 }}>
+                Writes Name + Email to the selected shift tab in the start list sheet.
+              </div>
+
+              <div className="form-group" style={{ marginBottom: 16 }}>
+                <label className="form-label">Shift</label>
+                <select className="form-select" value={sendShift} onChange={(e) => setSendShift(e.target.value)}>
+                  {SHIFTS.map((s) => <option key={s}>{s}</option>)}
+                </select>
+              </div>
+
+              <div style={{ marginBottom: 20 }}>
+                <div style={{ fontSize: 12, fontWeight: 500, marginBottom: 8, color: "var(--gray-70)" }}>
+                  Workers with a start date ({eligible.length}):
+                </div>
+                {eligible.length === 0 ? (
+                  <div style={{ fontSize: 12, color: "var(--gray-50)", fontStyle: "italic" }}>
+                    No workers with a start date set. Fill in Start Date in the table first.
+                  </div>
+                ) : (
+                  <div style={{ maxHeight: 180, overflowY: "auto", border: "1px solid var(--gray-20)", borderRadius: 8 }}>
+                    {eligible.map((r) => {
+                      const name = String(r["Worker name"] || r["Worker Name"] || "—");
+                      const email = String(r["Email"] ?? "");
+                      const state = getRow(r);
+                      return (
+                        <div key={r._rowIndex} style={{ display: "flex", justifyContent: "space-between", padding: "8px 12px", borderBottom: "1px solid var(--gray-10)", fontSize: 12 }}>
+                          <span style={{ fontWeight: 500 }}>{name}</span>
+                          <span style={{ color: "var(--gray-60)" }}>{state.startDate}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+                <button className="btn btn-ghost btn-sm" onClick={() => setShowSendModal(false)}>Cancel</button>
+                <button
+                  className="btn btn-primary btn-sm"
+                  disabled={eligible.length === 0 || sendMutation.isPending}
+                  onClick={() => {
+                    const workers = eligible.map((r) => ({
+                      name: String(r["Worker name"] || r["Worker Name"] || ""),
+                      email: String(r["Email"] ?? ""),
+                    }));
+                    sendMutation.mutate({ shift: sendShift, workers });
+                  }}
+                >
+                  {sendMutation.isPending ? "Sending…" : `Send ${eligible.length} worker${eligible.length === 1 ? "" : "s"}`}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {!records.length ? (
         <div style={{ textAlign: "center", padding: "48px 24px", color: "var(--gray-60)" }}>No tour records found</div>
@@ -225,6 +323,16 @@ export default function GWOpsTab() {
               })}
             </tbody>
           </table>
+        </div>
+      )}
+      {sendToast && (
+        <div style={{
+          position: "fixed", bottom: 24, right: 24, zIndex: 999,
+          background: sendToast.type === "error" ? "var(--red-70)" : "var(--midnight-100)",
+          color: "white", padding: "12px 20px", borderRadius: 10,
+          fontSize: 13, fontWeight: 500,
+        }}>
+          {sendToast.msg}
         </div>
       )}
     </div>

@@ -2,6 +2,43 @@ import { google } from "googleapis";
 import type { TourRecord } from "@tour-tracker/shared";
 
 const SHEET_ID = "10K_wZq-BVnl_56YxCNRhO8imtLRL53z5p9PtkxvIQ6U";
+const START_LIST_SHEET_ID = process.env.START_LIST_SHEET_ID ?? "1bKhDJZxTQ0QpB5Em3OTOdzC8V2eW4lFLrTRnZQGhNFc";
+
+// Name = col B (index 1), Email = col H (index 7) — same across all 3 tabs
+const START_LIST_NAME_COL = "B";
+const START_LIST_EMAIL_COL = "H";
+
+export async function writeStartList(
+  shift: string,
+  workers: Array<{ name: string; email: string }>
+): Promise<void> {
+  const sheets = await getSheets();
+  const tab = shift; // "Front Half", "Back Half", or "Night Shift"
+
+  const clearRange1 = `'${tab}'!${START_LIST_NAME_COL}2:${START_LIST_NAME_COL}1000`;
+  const clearRange2 = `'${tab}'!${START_LIST_EMAIL_COL}2:${START_LIST_EMAIL_COL}1000`;
+
+  await sheets.spreadsheets.values.batchClear({
+    spreadsheetId: START_LIST_SHEET_ID,
+    requestBody: { ranges: [clearRange1, clearRange2] },
+  });
+
+  if (!workers.length) return;
+
+  const nameValues = workers.map((w) => [w.name]);
+  const emailValues = workers.map((w) => [w.email]);
+
+  await sheets.spreadsheets.values.batchUpdate({
+    spreadsheetId: START_LIST_SHEET_ID,
+    requestBody: {
+      valueInputOption: "USER_ENTERED",
+      data: [
+        { range: `'${tab}'!${START_LIST_NAME_COL}2`, values: nameValues },
+        { range: `'${tab}'!${START_LIST_EMAIL_COL}2`, values: emailValues },
+      ],
+    },
+  });
+}
 const SHEET_GID = "2073822165";
 
 let sheetsClient: ReturnType<typeof google.sheets> | null = null;
