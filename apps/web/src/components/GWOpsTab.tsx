@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+// sendToStartList is called directly (not via useMutation) to support sequential multi-shift sends
 import { getTourRecords, updateTourRecord, sendToStartList } from "../api";
 import type { TourRecord } from "@tour-tracker/shared";
 
@@ -22,6 +23,7 @@ function isIneligible(r: TourRecord): boolean {
 
 interface RowState {
   startDate: string;
+  schedule: string;
   nameSent: string;
 }
 
@@ -31,22 +33,26 @@ export default function GWOpsTab() {
   const [rowState, setRowState] = useState<Record<number, RowState>>({});
   const [saved, setSaved] = useState<Record<number, boolean>>({});
   const [showSendModal, setShowSendModal] = useState(false);
-  const [sendShift, setSendShift] = useState<string>("Front Half");
   const [sendToast, setSendToast] = useState<{ msg: string; type: "success" | "error" } | null>(null);
+  const [sending, setSending] = useState(false);
 
-  const sendMutation = useMutation({
-    mutationFn: ({ shift, workers }: { shift: string; workers: Array<{ name: string; email: string }> }) =>
-      sendToStartList(shift, workers),
-    onSuccess: (res) => {
+  async function handleSendAll(byShift: Record<string, Array<{ name: string; email: string }>>) {
+    setSending(true);
+    try {
+      let total = 0;
+      for (const [shift, workers] of Object.entries(byShift)) {
+        await sendToStartList(shift, workers);
+        total += workers.length;
+      }
       setShowSendModal(false);
-      setSendToast({ msg: `${res.count} worker${res.count === 1 ? "" : "s"} sent to ${sendShift} start list`, type: "success" });
-      setTimeout(() => setSendToast(null), 4000);
-    },
-    onError: (e) => {
+      setSendToast({ msg: `${total} worker${total === 1 ? "" : "s"} sent to start list`, type: "success" });
+    } catch (e) {
       setSendToast({ msg: e instanceof Error ? e.message : "Failed to send", type: "error" });
+    } finally {
+      setSending(false);
       setTimeout(() => setSendToast(null), 4000);
-    },
-  });
+    }
+  }
 
   const updateMutation = useMutation({
     mutationFn: ({ rowIndex, payload }: { rowIndex: number; payload: Partial<TourRecord> }) =>
@@ -61,6 +67,7 @@ export default function GWOpsTab() {
   function getRow(r: TourRecord): RowState {
     return rowState[r._rowIndex] ?? {
       startDate: String(r["Start Date"] ?? ""),
+      schedule: String(r["Schedule"] ?? ""),
       nameSent: String(r["Name sent on list"] ?? ""),
     };
   }
@@ -75,6 +82,7 @@ export default function GWOpsTab() {
       rowIndex: r._rowIndex,
       payload: {
         "Start Date": state.startDate,
+        "Schedule": state.schedule,
         "Name sent on list": state.nameSent,
       },
     });
@@ -115,7 +123,15 @@ export default function GWOpsTab() {
 
       {/* Send to Start List modal */}
       {showSendModal && (() => {
-        const eligible = records.filter((r) => !isIneligible(r) && getRow(r).startDate);
+        const eligible = records.filter((r) => !isIneligible(r) && getRow(r).startDate && getRow(r).schedule);
+        const noSchedule = records.filter((r) => !isIneligible(r) && getRow(r).startDate && !getRow(r).schedule);
+        const byShift = eligible.reduce<Record<string, Array<{ name: string; email: string }>>>((acc, r) => {
+          const shift = getRow(r).schedule;
+          if (!acc[shift]) acc[shift] = [];
+          acc[shift].push({ name: String(r["Worker name"] || r["Worker Name"] || ""), email: String(r["Email"] ?? "") });
+          return acc;
+        }, {});
+        const total = eligible.length;
         return (
           <div style={{
             position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", zIndex: 200,
@@ -123,59 +139,51 @@ export default function GWOpsTab() {
           }}>
             <div style={{
               background: "var(--white)", borderRadius: 14, padding: 28,
-              width: 420, maxWidth: "90vw", boxShadow: "0 8px 32px rgba(0,0,0,0.14)",
+              width: 440, maxWidth: "90vw", boxShadow: "0 8px 32px rgba(0,0,0,0.14)",
             }}>
               <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 4 }}>Send to Start List</div>
               <div style={{ fontSize: 12, color: "var(--gray-60)", marginBottom: 20 }}>
-                Writes Name + Email to the selected shift tab in the start list sheet.
+                Workers are sent to the tab matching their selected schedule.
               </div>
 
-              <div className="form-group" style={{ marginBottom: 16 }}>
-                <label className="form-label">Shift</label>
-                <select className="form-select" value={sendShift} onChange={(e) => setSendShift(e.target.value)}>
-                  {SHIFTS.map((s) => <option key={s}>{s}</option>)}
-                </select>
-              </div>
-
-              <div style={{ marginBottom: 20 }}>
-                <div style={{ fontSize: 12, fontWeight: 500, marginBottom: 8, color: "var(--gray-70)" }}>
-                  Workers with a start date ({eligible.length}):
+              {noSchedule.length > 0 && (
+                <div style={{ background: "var(--orange-5, #fff8f0)", border: "1px solid var(--orange-30, #ffd6a0)", borderRadius: 8, padding: "10px 12px", marginBottom: 16, fontSize: 12, color: "var(--orange-70, #b45300)" }}>
+                  {noSchedule.length} worker{noSchedule.length === 1 ? "" : "s"} with a start date but no schedule set — they will be skipped.
                 </div>
-                {eligible.length === 0 ? (
-                  <div style={{ fontSize: 12, color: "var(--gray-50)", fontStyle: "italic" }}>
-                    No workers with a start date set. Fill in Start Date in the table first.
-                  </div>
-                ) : (
-                  <div style={{ maxHeight: 180, overflowY: "auto", border: "1px solid var(--gray-20)", borderRadius: 8 }}>
-                    {eligible.map((r) => {
-                      const name = String(r["Worker name"] || r["Worker Name"] || "—");
-                      const email = String(r["Email"] ?? "");
-                      const state = getRow(r);
-                      return (
-                        <div key={r._rowIndex} style={{ display: "flex", justifyContent: "space-between", padding: "8px 12px", borderBottom: "1px solid var(--gray-10)", fontSize: 12 }}>
-                          <span style={{ fontWeight: 500 }}>{name}</span>
-                          <span style={{ color: "var(--gray-60)" }}>{state.startDate}</span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
+              )}
+
+              {total === 0 ? (
+                <div style={{ fontSize: 12, color: "var(--gray-50)", fontStyle: "italic", marginBottom: 20 }}>
+                  No workers ready to send. Set Start Date and Schedule in the table first.
+                </div>
+              ) : (
+                <div style={{ marginBottom: 20 }}>
+                  {Object.entries(byShift).map(([shift, workers]) => (
+                    <div key={shift} style={{ marginBottom: 12 }}>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: "var(--violet-70)", marginBottom: 6 }}>
+                        {shift} ({workers.length})
+                      </div>
+                      <div style={{ border: "1px solid var(--gray-20)", borderRadius: 8, overflow: "hidden" }}>
+                        {workers.map((w, i) => (
+                          <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "7px 12px", borderBottom: i < workers.length - 1 ? "1px solid var(--gray-10)" : "none", fontSize: 12 }}>
+                            <span style={{ fontWeight: 500 }}>{w.name}</span>
+                            <span style={{ color: "var(--gray-60)" }}>{w.email}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
 
               <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
                 <button className="btn btn-ghost btn-sm" onClick={() => setShowSendModal(false)}>Cancel</button>
                 <button
                   className="btn btn-primary btn-sm"
-                  disabled={eligible.length === 0 || sendMutation.isPending}
-                  onClick={() => {
-                    const workers = eligible.map((r) => ({
-                      name: String(r["Worker name"] || r["Worker Name"] || ""),
-                      email: String(r["Email"] ?? ""),
-                    }));
-                    sendMutation.mutate({ shift: sendShift, workers });
-                  }}
+                  disabled={total === 0 || sending}
+                  onClick={() => handleSendAll(byShift)}
                 >
-                  {sendMutation.isPending ? "Sending…" : `Send ${eligible.length} worker${eligible.length === 1 ? "" : "s"}`}
+                  {sending ? "Sending…" : `Send ${total} worker${total === 1 ? "" : "s"}`}
                 </button>
               </div>
             </div>
@@ -199,6 +207,7 @@ export default function GWOpsTab() {
                 <th>BGC</th>
                 <th>Console</th>
                 <th>Start Date</th>
+                <th>Schedule</th>
                 <th>Name Sent</th>
                 <th />
               </tr>
@@ -286,6 +295,17 @@ export default function GWOpsTab() {
                         disabled={ineligible}
                         onChange={(e) => setRow(r._rowIndex, { startDate: e.target.value })}
                       />
+                    </td>
+                    <td>
+                      <select
+                        className="inline-select"
+                        value={state.schedule}
+                        disabled={ineligible}
+                        onChange={(e) => setRow(r._rowIndex, { schedule: e.target.value })}
+                      >
+                        <option value="">—</option>
+                        {SHIFTS.map((s) => <option key={s}>{s}</option>)}
+                      </select>
                     </td>
                     <td>
                       <select
