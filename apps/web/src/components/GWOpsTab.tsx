@@ -79,8 +79,8 @@ export default function GWOpsTab() {
       // Score desc (ineligible sink to bottom within this sort)
       const diff = scoreNum(b) - scoreNum(a);
       if (diff !== 0) return diff;
-      // Tour date asc
-      return String(a["Tour Date"] ?? "").localeCompare(String(b["Tour Date"] ?? ""));
+      // Tour date desc (more recent first)
+      return String(b["Tour Date"] ?? "").localeCompare(String(a["Tour Date"] ?? ""));
     });
 
   if (isLoading) return <div style={{ padding: 24, color: "var(--gray-60)" }}><span className="spinner" /> Loading…</div>;
