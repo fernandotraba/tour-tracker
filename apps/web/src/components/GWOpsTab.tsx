@@ -101,6 +101,7 @@ export default function GWOpsTab() {
           <table>
             <thead>
               <tr>
+                <th style={{ width: 40 }}>#</th>
                 <th>Worker</th>
                 <th>Tour Date</th>
                 <th>Score</th>
@@ -117,7 +118,7 @@ export default function GWOpsTab() {
               </tr>
             </thead>
             <tbody>
-              {records.map((r) => {
+              {records.map((r, idx) => {
                 const ineligible = isIneligible(r);
                 const score = scoreNum(r);
                 const name = String(r["Worker name"] || r["Worker Name"] || "—");
@@ -137,6 +138,17 @@ export default function GWOpsTab() {
 
                 return (
                   <tr key={r._rowIndex} style={rowStyle}>
+                    <td>
+                      <span style={{
+                        display: "inline-flex", alignItems: "center", justifyContent: "center",
+                        width: 24, height: 24, borderRadius: 6,
+                        background: ineligible ? "var(--gray-10)" : idx === 0 ? "var(--violet-60)" : idx === 1 ? "var(--violet-40)" : idx === 2 ? "var(--violet-20)" : "var(--gray-10)",
+                        color: ineligible ? "var(--gray-50)" : idx < 3 ? (idx === 0 ? "white" : "var(--violet-80)") : "var(--gray-60)",
+                        fontSize: 11, fontWeight: 700,
+                      }}>
+                        {ineligible ? "—" : idx + 1}
+                      </span>
+                    </td>
                     <td>
                       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                         {photo
