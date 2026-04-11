@@ -1,6 +1,7 @@
 import { NavLink, Outlet } from "react-router-dom";
 import { useAuth } from "../auth";
 import { googleLogout } from "@react-oauth/google";
+import { IS_MOCK } from "../mock";
 
 export default function Layout() {
   const { user, logout } = useAuth();
@@ -104,6 +105,16 @@ export default function Layout() {
       }}>
         <span style={{ fontSize: 16, fontWeight: 600, color: "var(--midnight-100)" }}>Tour Tracker</span>
         <span style={{ fontSize: 12, color: "var(--gray-60)" }}>Reach Facility</span>
+        {IS_MOCK && (
+          <span style={{
+            marginLeft: "auto", fontSize: 11, fontWeight: 600,
+            background: "var(--orange-10, #fff3e0)", color: "var(--orange-70, #b45300)",
+            border: "1px solid var(--orange-30, #ffb74d)",
+            borderRadius: 6, padding: "3px 10px",
+          }}>
+            DEMO MODE — data is not saved
+          </span>
+        )}
       </header>
 
       {/* ── Main ── */}

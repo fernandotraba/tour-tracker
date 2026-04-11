@@ -1,5 +1,6 @@
 import { AUTH_KEY, clearSession } from "./auth";
 import type { Worker, TourRecord, AuthResponse } from "@tour-tracker/shared";
+import { IS_MOCK, MOCK_WORKERS, MOCK_RECORDS } from "./mock";
 
 function getSession(): { token: string; googleToken?: string } | null {
   try {
@@ -41,6 +42,13 @@ export async function verifyGoogleToken(accessToken: string): Promise<AuthRespon
 }
 
 export async function searchWorkers(q: string): Promise<Worker[]> {
+  if (IS_MOCK) {
+    await new Promise((r) => setTimeout(r, 400));
+    return MOCK_WORKERS.filter((w) =>
+      w.name.toLowerCase().includes(q.toLowerCase()) ||
+      w.phone.includes(q)
+    );
+  }
   const session = getSession();
   const data = await apiFetch<{ workers: Worker[] }>(
     `/api/workers/search?q=${encodeURIComponent(q)}`,
@@ -50,11 +58,19 @@ export async function searchWorkers(q: string): Promise<Worker[]> {
 }
 
 export async function getTourRecords(): Promise<TourRecord[]> {
+  if (IS_MOCK) {
+    await new Promise((r) => setTimeout(r, 300));
+    return MOCK_RECORDS;
+  }
   const data = await apiFetch<{ records: TourRecord[] }>("/api/tour-records");
   return data.records;
 }
 
 export async function createTourRecord(payload: Partial<TourRecord>): Promise<void> {
+  if (IS_MOCK) {
+    await new Promise((r) => setTimeout(r, 500));
+    return;
+  }
   await apiFetch("/api/tour-records", {
     method: "POST",
     body: JSON.stringify(payload),
@@ -65,6 +81,10 @@ export async function sendToStartList(
   shift: string,
   workers: Array<{ name: string; email: string }>
 ): Promise<{ count: number }> {
+  if (IS_MOCK) {
+    await new Promise((r) => setTimeout(r, 600));
+    return { count: workers.length };
+  }
   return apiFetch<{ count: number }>("/api/start-list", {
     method: "POST",
     body: JSON.stringify({ shift, workers }),
@@ -75,6 +95,10 @@ export async function updateTourRecord(
   rowIndex: number,
   payload: Partial<TourRecord>
 ): Promise<void> {
+  if (IS_MOCK) {
+    await new Promise((r) => setTimeout(r, 400));
+    return;
+  }
   await apiFetch(`/api/tour-records/${rowIndex}`, {
     method: "PATCH",
     body: JSON.stringify(payload),

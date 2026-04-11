@@ -2,12 +2,19 @@ import { useGoogleLogin } from "@react-oauth/google";
 import { useAuth } from "../auth";
 import { verifyGoogleToken } from "../api";
 import type { AuthResponse } from "@tour-tracker/shared";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { IS_MOCK, MOCK_USER } from "../mock";
 
 export default function LoginPage() {
   const { login } = useAuth();
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (IS_MOCK) {
+      login({ ...MOCK_USER, googleToken: "mock-google-token" });
+    }
+  }, []);
 
   const handleLogin = useGoogleLogin({
     hosted_domain: "traba.work",
