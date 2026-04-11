@@ -4,6 +4,7 @@
   "workspaces": ["apps/*"],
   "scripts": {
     "dev": "bun run --parallel --filter '*' dev",
+    "dev:mock": "npm run dev:mock --workspace=web",
     "build": "bun run --filter apps/web build && bun run --filter apps/api build",
     "lint": "bun run --parallel --filter '*' lint",
     "typecheck": "bun run --parallel --filter '*' typecheck"
