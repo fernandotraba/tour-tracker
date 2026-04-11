@@ -7,7 +7,7 @@ export default function Layout() {
   const { user, logout } = useAuth();
 
   function handleLogout() {
-    googleLogout();
+    if (!IS_MOCK) googleLogout();
     logout();
   }
 

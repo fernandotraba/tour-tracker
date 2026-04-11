@@ -8,6 +8,7 @@ import Layout from "./components/Layout";
 import OnsiteTab from "./components/OnsiteTab";
 import GWOpsTab from "./components/GWOpsTab";
 import NYWOpsTab from "./components/NYWOpsTab";
+import { IS_MOCK } from "./mock";
 
 const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined;
 
@@ -33,7 +34,9 @@ export default function App() {
               <Route
                 path="/login"
                 element={
-                  googleClientId ? (
+                  IS_MOCK ? (
+                    <LoginPage />
+                  ) : googleClientId ? (
                     <GoogleOAuthProvider clientId={googleClientId}>
                       <LoginPage />
                     </GoogleOAuthProvider>
