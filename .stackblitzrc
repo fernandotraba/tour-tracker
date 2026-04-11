@@ -1,0 +1,4 @@
+{
+  "installDependencies": true,
+  "startCommand": "cd apps/web && bun run dev:mock"
+}
