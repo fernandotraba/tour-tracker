@@ -34,10 +34,8 @@ export default function App() {
               <Route
                 path="/login"
                 element={
-                  IS_MOCK ? (
-                    <LoginPage />
-                  ) : googleClientId ? (
-                    <GoogleOAuthProvider clientId={googleClientId}>
+                  IS_MOCK || googleClientId ? (
+                    <GoogleOAuthProvider clientId={googleClientId ?? "mock"}>
                       <LoginPage />
                     </GoogleOAuthProvider>
                   ) : (

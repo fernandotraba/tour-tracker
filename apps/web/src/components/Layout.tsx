@@ -69,11 +69,21 @@ export default function Layout() {
         {user && (
           <div style={{ padding: "12px 14px", borderTop: "1px solid var(--gray-20)" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-              <img
-                src={user.picture} alt={user.name}
-                referrerPolicy="no-referrer"
-                style={{ width: 28, height: 28, borderRadius: "50%", flexShrink: 0 }}
-              />
+              {user.picture ? (
+                <img
+                  src={user.picture} alt={user.name}
+                  referrerPolicy="no-referrer"
+                  style={{ width: 28, height: 28, borderRadius: "50%", flexShrink: 0 }}
+                />
+              ) : (
+                <div style={{
+                  width: 28, height: 28, borderRadius: "50%", flexShrink: 0,
+                  background: "var(--violet-60)", display: "flex", alignItems: "center",
+                  justifyContent: "center", color: "white", fontSize: 11, fontWeight: 600,
+                }}>
+                  {user.name.charAt(0).toUpperCase()}
+                </div>
+              )}
               <div style={{ overflow: "hidden" }}>
                 <div style={{ fontSize: 12, fontWeight: 500, color: "var(--midnight-100)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                   {user.name.split(" ")[0]}
