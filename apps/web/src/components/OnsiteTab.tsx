@@ -13,10 +13,12 @@ interface ToggleState {
   turnedAway: YN;
 }
 
+const SCHEDULES = ["Front Half", "Back Half", "Night Shift"];
+
 interface QueueEntry {
   id: string;
   worker: Worker;
-  schedule: string;
+  schedules: string[];
   tourDate: string;
   score: string;
   toggles: ToggleState;
@@ -68,7 +70,7 @@ export default function OnsiteTab() {
   const [query, setQuery] = useState("");
   const [showResults, setShowResults] = useState(false);
   const [selectedWorker, setSelectedWorker] = useState<Worker | null>(null);
-  const [schedule, setSchedule] = useState("");
+  const [schedules, setSchedules] = useState<string[]>([]);
   const [tourDate, setTourDate] = useState(new Date().toISOString().split("T")[0]);
   const [score, setScore] = useState("");
   const [toggles, setToggles] = useState<ToggleState>(EMPTY_TOGGLES);
@@ -106,7 +108,7 @@ export default function OnsiteTab() {
   // Pre-fill form when switching to update mode
   useEffect(() => {
     if (entryMode === "update" && existingRecord) {
-      setSchedule(existingRecord["Schedule"] || "");
+      setSchedules(existingRecord["Schedule"] ? existingRecord["Schedule"].split(", ") : []);
       setTourDate(existingRecord["Tour Date"] || new Date().toISOString().split("T")[0]);
       setScore(existingRecord["Candidate Score (1-10)"] || "");
       setToggles({
@@ -119,7 +121,7 @@ export default function OnsiteTab() {
       setTurnedAwayReason(existingRecord["Turned Away Reason"] || "");
       setNotes(existingRecord["Notes"] || "");
     } else if (entryMode === "create") {
-      setSchedule("");
+      setSchedules([]);
       setTourDate(new Date().toISOString().split("T")[0]);
       setScore("");
       setToggles(EMPTY_TOGGLES);
@@ -145,7 +147,7 @@ export default function OnsiteTab() {
   function resetForm() {
     setSelectedWorker(null);
     setQuery("");
-    setSchedule("");
+    setSchedules([]);
     setTourDate(new Date().toISOString().split("T")[0]);
     setScore("");
     setToggles(EMPTY_TOGGLES);
@@ -162,11 +164,11 @@ export default function OnsiteTab() {
   }
 
   function buildPayload(entry: {
-    worker: Worker; schedule: string; tourDate: string; score: string;
+    worker: Worker; schedules: string[]; tourDate: string; score: string;
     toggles: ToggleState; turnedAwayReason: string; notes: string;
   }): Partial<TourRecord> {
     return {
-      "Schedule": entry.schedule,
+      "Schedule": entry.schedules.join(", "),
       "Worker name": entry.worker.name,
       "Tour Date": entry.tourDate,
       "Worker Picture": entry.worker.photoUrl,
@@ -186,7 +188,7 @@ export default function OnsiteTab() {
 
   function validateForm(): boolean {
     if (!selectedWorker) { showToast("No worker selected", "error"); return false; }
-    if (!schedule) { showToast("Please select a schedule", "error"); return false; }
+    if (schedules.length === 0) { showToast("Please select at least one schedule", "error"); return false; }
     if (!tourDate) { showToast("Please enter a tour date", "error"); return false; }
     if (!score) { showToast("Please enter a candidate score", "error"); return false; }
     return true;
@@ -199,7 +201,7 @@ export default function OnsiteTab() {
       {
         id: `${Date.now()}-${Math.random()}`,
         worker: selectedWorker!,
-        schedule, tourDate, score, toggles, turnedAwayReason, notes,
+        schedules, tourDate, score, toggles, turnedAwayReason, notes,
         mode: entryMode,
         existingRowIndex: entryMode === "update" ? existingRecord?._rowIndex : undefined,
       },
@@ -211,11 +213,11 @@ export default function OnsiteTab() {
   function handleSubmitDirect() {
     if (!validateForm()) return;
     if (entryMode === "update" && existingRecord?._rowIndex) {
-      updateTourRecord(existingRecord._rowIndex, buildPayload({ worker: selectedWorker!, schedule, tourDate, score, toggles, turnedAwayReason, notes }))
+      updateTourRecord(existingRecord._rowIndex, buildPayload({ worker: selectedWorker!, schedules, tourDate, score, toggles, turnedAwayReason, notes }))
         .then(() => { showToast("Entry updated"); resetForm(); })
         .catch((e) => showToast(e.message, "error"));
     } else {
-      submitMutation.mutate(buildPayload({ worker: selectedWorker!, schedule, tourDate, score, toggles, turnedAwayReason, notes }));
+      submitMutation.mutate(buildPayload({ worker: selectedWorker!, schedules, tourDate, score, toggles, turnedAwayReason, notes }));
     }
   }
 
@@ -296,7 +298,7 @@ export default function OnsiteTab() {
                     )}
                   </div>
                   <div style={{ fontSize: 11, color: "var(--gray-60)" }}>
-                    {entry.schedule} · {entry.tourDate} · Score {entry.score}
+                    {entry.schedules.join(", ")} · {entry.tourDate} · Score {entry.score}
                   </div>
                 </div>
                 <button
@@ -481,13 +483,23 @@ export default function OnsiteTab() {
             <div className="form-grid-2" style={{ marginBottom: 16 }}>
               <div className="form-group">
                 <label className="form-label">Schedule *</label>
-                <select className="form-select" value={schedule} onChange={(e) => setSchedule(e.target.value)}>
-                  <option value="">Select schedule</option>
-                  <option>Front Half</option>
-                  <option>Back Half</option>
-                  <option>Night Shift</option>
-                  <option>Front Half + Back Half</option>
-                </select>
+                <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 4 }}>
+                  {SCHEDULES.map((s) => (
+                    <label key={s} style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 13 }}>
+                      <input
+                        type="checkbox"
+                        checked={schedules.includes(s)}
+                        onChange={(e) =>
+                          setSchedules((prev) =>
+                            e.target.checked ? [...prev, s] : prev.filter((x) => x !== s)
+                          )
+                        }
+                        style={{ width: 15, height: 15, accentColor: "var(--violet-60)", cursor: "pointer" }}
+                      />
+                      {s}
+                    </label>
+                  ))}
+                </div>
               </div>
               <div className="form-group">
                 <label className="form-label">Tour Date *</label>
