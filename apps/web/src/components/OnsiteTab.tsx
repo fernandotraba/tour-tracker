@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { searchWorkers, createTourRecord } from "../api";
-import type { Worker } from "@tour-tracker/shared";
+import { searchWorkers, createTourRecord, getTourRecords, updateTourRecord } from "../api";
+import type { Worker, TourRecord } from "@tour-tracker/shared";
 
 type YN = "Y" | "N" | "";
 
@@ -11,6 +11,19 @@ interface ToggleState {
   thcPositive: YN;
   docSigned: YN;
   turnedAway: YN;
+}
+
+interface QueueEntry {
+  id: string;
+  worker: Worker;
+  schedule: string;
+  tourDate: string;
+  score: string;
+  toggles: ToggleState;
+  turnedAwayReason: string;
+  notes: string;
+  mode: "create" | "update";
+  existingRowIndex?: number;
 }
 
 const TURNED_AWAY_REASONS = [
@@ -49,6 +62,8 @@ function YNToggle({ value, onChange }: { value: YN; onChange: (v: YN) => void })
   );
 }
 
+const EMPTY_TOGGLES: ToggleState = { dtPerformed: "", dtResultsClear: "", thcPositive: "", docSigned: "", turnedAway: "" };
+
 export default function OnsiteTab() {
   const [query, setQuery] = useState("");
   const [showResults, setShowResults] = useState(false);
@@ -56,13 +71,22 @@ export default function OnsiteTab() {
   const [schedule, setSchedule] = useState("");
   const [tourDate, setTourDate] = useState(new Date().toISOString().split("T")[0]);
   const [score, setScore] = useState("");
-  const [toggles, setToggles] = useState<ToggleState>({ dtPerformed: "", dtResultsClear: "", thcPositive: "", docSigned: "", turnedAway: "" });
+  const [toggles, setToggles] = useState<ToggleState>(EMPTY_TOGGLES);
   const [turnedAwayReason, setTurnedAwayReason] = useState("");
   const [notes, setNotes] = useState("");
+  const [entryMode, setEntryMode] = useState<"create" | "update">("create");
+  const [queue, setQueue] = useState<QueueEntry[]>([]);
+  const [submittingQueue, setSubmittingQueue] = useState(false);
   const [toast, setToast] = useState<{ msg: string; type: "success" | "error" } | null>(null);
   const searchRef = useRef<HTMLDivElement>(null);
 
   const debouncedQuery = useDebounce(query, 400);
+
+  const { data: tourRecords = [] } = useQuery({
+    queryKey: ["tour-records"],
+    queryFn: getTourRecords,
+    staleTime: 60_000,
+  });
 
   const { data: workers, isFetching: searching, error: searchError } = useQuery({
     queryKey: ["workers", debouncedQuery],
@@ -70,6 +94,39 @@ export default function OnsiteTab() {
     enabled: debouncedQuery.trim().length >= 2,
     retry: false,
   });
+
+  const existingRecord: TourRecord | undefined = selectedWorker
+    ? tourRecords.find(
+        (r) =>
+          r["Worker name"]?.toLowerCase() === selectedWorker.name.toLowerCase() ||
+          (selectedWorker.email && r["Email"]?.toLowerCase() === selectedWorker.email.toLowerCase())
+      )
+    : undefined;
+
+  // Pre-fill form when switching to update mode
+  useEffect(() => {
+    if (entryMode === "update" && existingRecord) {
+      setSchedule(existingRecord["Schedule"] || "");
+      setTourDate(existingRecord["Tour Date"] || new Date().toISOString().split("T")[0]);
+      setScore(existingRecord["Candidate Score (1-10)"] || "");
+      setToggles({
+        dtPerformed: (existingRecord["DT Performed"] as YN) || "",
+        dtResultsClear: (existingRecord["DT Results Clear"] as YN) || "",
+        thcPositive: (existingRecord["THC Positive"] as YN) || "",
+        docSigned: (existingRecord["Doc Signed"] as YN) || "",
+        turnedAway: (existingRecord["Turned Away"] as YN) || "",
+      });
+      setTurnedAwayReason(existingRecord["Turned Away Reason"] || "");
+      setNotes(existingRecord["Notes"] || "");
+    } else if (entryMode === "create") {
+      setSchedule("");
+      setTourDate(new Date().toISOString().split("T")[0]);
+      setScore("");
+      setToggles(EMPTY_TOGGLES);
+      setTurnedAwayReason("");
+      setNotes("");
+    }
+  }, [entryMode]);
 
   const submitMutation = useMutation({
     mutationFn: createTourRecord,
@@ -91,40 +148,99 @@ export default function OnsiteTab() {
     setSchedule("");
     setTourDate(new Date().toISOString().split("T")[0]);
     setScore("");
-    setToggles({ dtPerformed: "", dtResultsClear: "", thcPositive: "", docSigned: "", turnedAway: "" });
+    setToggles(EMPTY_TOGGLES);
     setTurnedAwayReason("");
     setNotes("");
+    setEntryMode("create");
   }
 
   function selectWorker(w: Worker) {
     setSelectedWorker(w);
     setQuery(w.name);
     setShowResults(false);
+    setEntryMode("create");
   }
 
-  function handleSubmit() {
-    if (!selectedWorker) return showToast("No worker selected", "error");
-    if (!schedule) return showToast("Please select a schedule", "error");
-    if (!tourDate) return showToast("Please enter a tour date", "error");
-    if (!score) return showToast("Please enter a candidate score", "error");
+  function buildPayload(entry: {
+    worker: Worker; schedule: string; tourDate: string; score: string;
+    toggles: ToggleState; turnedAwayReason: string; notes: string;
+  }): Partial<TourRecord> {
+    return {
+      "Schedule": entry.schedule,
+      "Worker name": entry.worker.name,
+      "Tour Date": entry.tourDate,
+      "Worker Picture": entry.worker.photoUrl,
+      "Candidate Score (1-10)": entry.score,
+      "Email": entry.worker.email,
+      "Phone Number": entry.worker.phone,
+      "Console Link": entry.worker.consoleUrl,
+      "DT Performed": entry.toggles.dtPerformed,
+      "DT Results Clear": entry.toggles.dtResultsClear,
+      "THC Positive": entry.toggles.thcPositive,
+      "Doc Signed": entry.toggles.docSigned,
+      "Turned Away": entry.toggles.turnedAway,
+      "Turned Away Reason": entry.toggles.turnedAway === "Y" ? entry.turnedAwayReason : "",
+      "Notes": entry.notes,
+    };
+  }
 
-    submitMutation.mutate({
-      "Schedule": schedule,
-      "Worker name": selectedWorker.name,
-      "Tour Date": tourDate,
-      "Worker Picture": selectedWorker.photoUrl,
-      "Candidate Score (1-10)": score,
-      "Email": selectedWorker.email,
-      "Phone Number": selectedWorker.phone,
-      "Console Link": selectedWorker.consoleUrl,
-      "DT Performed": toggles.dtPerformed,
-      "DT Results Clear": toggles.dtResultsClear,
-      "THC Positive": toggles.thcPositive,
-      "Doc Signed": toggles.docSigned,
-      "Turned Away": toggles.turnedAway,
-      "Turned Away Reason": toggles.turnedAway === "Y" ? turnedAwayReason : "",
-      "Notes": notes,
-    });
+  function validateForm(): boolean {
+    if (!selectedWorker) { showToast("No worker selected", "error"); return false; }
+    if (!schedule) { showToast("Please select a schedule", "error"); return false; }
+    if (!tourDate) { showToast("Please enter a tour date", "error"); return false; }
+    if (!score) { showToast("Please enter a candidate score", "error"); return false; }
+    return true;
+  }
+
+  function addToQueue() {
+    if (!validateForm()) return;
+    setQueue((q) => [
+      ...q,
+      {
+        id: `${Date.now()}-${Math.random()}`,
+        worker: selectedWorker!,
+        schedule, tourDate, score, toggles, turnedAwayReason, notes,
+        mode: entryMode,
+        existingRowIndex: entryMode === "update" ? existingRecord?._rowIndex : undefined,
+      },
+    ]);
+    showToast(`${selectedWorker!.name} added to queue`);
+    resetForm();
+  }
+
+  function handleSubmitDirect() {
+    if (!validateForm()) return;
+    if (entryMode === "update" && existingRecord?._rowIndex) {
+      updateTourRecord(existingRecord._rowIndex, buildPayload({ worker: selectedWorker!, schedule, tourDate, score, toggles, turnedAwayReason, notes }))
+        .then(() => { showToast("Entry updated"); resetForm(); })
+        .catch((e) => showToast(e.message, "error"));
+    } else {
+      submitMutation.mutate(buildPayload({ worker: selectedWorker!, schedule, tourDate, score, toggles, turnedAwayReason, notes }));
+    }
+  }
+
+  async function submitQueue() {
+    if (queue.length === 0) return;
+    setSubmittingQueue(true);
+    let success = 0, failed = 0;
+    for (const entry of queue) {
+      try {
+        if (entry.mode === "update" && entry.existingRowIndex) {
+          await updateTourRecord(entry.existingRowIndex, buildPayload(entry));
+        } else {
+          await createTourRecord(buildPayload(entry));
+        }
+        success++;
+      } catch {
+        failed++;
+      }
+    }
+    setSubmittingQueue(false);
+    setQueue([]);
+    showToast(
+      failed > 0 ? `${success} submitted, ${failed} failed` : `${success} ${success === 1 ? "entry" : "entries"} submitted`,
+      failed > 0 ? "error" : "success"
+    );
   }
 
   return (
@@ -133,6 +249,70 @@ export default function OnsiteTab() {
         <div style={{ fontSize: 15, fontWeight: 600, color: "var(--midnight-100)", marginBottom: 4 }}>Add Tour Attendee</div>
         <div style={{ fontSize: 12, color: "var(--gray-60)" }}>Search by worker name or phone number</div>
       </div>
+
+      {/* Queue panel */}
+      {queue.length > 0 && (
+        <div style={{
+          background: "var(--violet-10)", border: "1px solid var(--violet-20)",
+          borderRadius: 12, padding: 16, marginBottom: 24,
+        }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: "var(--violet-70)" }}>
+              Queue — {queue.length} {queue.length === 1 ? "entry" : "entries"} pending
+            </div>
+            <button
+              className="btn btn-primary btn-sm"
+              onClick={submitQueue}
+              disabled={submittingQueue}
+              style={{ minWidth: 140 }}
+            >
+              {submittingQueue ? <span className="spinner" /> : (
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="20 6 9 17 4 12"/>
+                </svg>
+              )}
+              {submittingQueue ? "Submitting…" : `Submit All (${queue.length})`}
+            </button>
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {queue.map((entry) => (
+              <div key={entry.id} style={{
+                display: "flex", alignItems: "center", gap: 12,
+                background: "var(--white)", borderRadius: 8, padding: "10px 14px",
+                border: "1px solid var(--gray-20)",
+              }}>
+                <div style={{
+                  width: 32, height: 32, borderRadius: 8, background: "var(--violet-20)",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  fontSize: 11, fontWeight: 700, color: "var(--violet-70)", flexShrink: 0,
+                }}>
+                  {initials(entry.worker.name)}
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 13, fontWeight: 500, color: "var(--midnight-100)" }}>
+                    {entry.worker.name}
+                    {entry.mode === "update" && (
+                      <span style={{ marginLeft: 8, fontSize: 10, background: "var(--orange-10)", color: "var(--orange-70)", padding: "1px 6px", borderRadius: 4, fontWeight: 500 }}>UPDATE</span>
+                    )}
+                  </div>
+                  <div style={{ fontSize: 11, color: "var(--gray-60)" }}>
+                    {entry.schedule} · {entry.tourDate} · Score {entry.score}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setQueue((q) => q.filter((e) => e.id !== entry.id))}
+                  style={{ background: "none", border: "none", cursor: "pointer", color: "var(--gray-40)", padding: 4, lineHeight: 1 }}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                  </svg>
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Search */}
       <div ref={searchRef} style={{ position: "relative", maxWidth: 480, marginBottom: 24 }}>
@@ -169,29 +349,41 @@ export default function OnsiteTab() {
             {!searching && workers?.length === 0 && (
               <div style={{ padding: 14, textAlign: "center", color: "var(--gray-60)", fontSize: 12 }}>No workers found</div>
             )}
-            {!searching && workers?.map((w) => (
-              <div
-                key={w.id}
-                onMouseDown={() => selectWorker(w)}
-                style={{
-                  display: "flex", alignItems: "center", gap: 12,
-                  padding: "12px 14px", cursor: "pointer",
-                  borderBottom: "1px solid var(--gray-20)",
-                }}
-              >
-                {w.photoUrl
-                  ? <img src={w.photoUrl} style={{ width: 36, height: 36, borderRadius: 8, objectFit: "cover", flexShrink: 0 }} />
-                  : <div style={{ width: 36, height: 36, borderRadius: 8, background: "var(--violet-10)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, fontSize: 13, fontWeight: 600, color: "var(--violet-60)" }}>{initials(w.name)}</div>
-                }
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 13, fontWeight: 500 }}>{w.name}</div>
-                  <div style={{ fontSize: 11, color: "var(--gray-60)" }}>{w.phone}{w.email ? ` · ${w.email}` : ""}</div>
+            {!searching && workers?.map((w) => {
+              const alreadyInTracker = tourRecords.some(
+                (r) =>
+                  r["Worker name"]?.toLowerCase() === w.name.toLowerCase() ||
+                  (w.email && r["Email"]?.toLowerCase() === w.email.toLowerCase())
+              );
+              return (
+                <div
+                  key={w.id}
+                  onMouseDown={() => selectWorker(w)}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 12,
+                    padding: "12px 14px", cursor: "pointer",
+                    borderBottom: "1px solid var(--gray-20)",
+                  }}
+                >
+                  {w.photoUrl
+                    ? <img src={w.photoUrl} style={{ width: 36, height: 36, borderRadius: 8, objectFit: "cover", flexShrink: 0 }} />
+                    : <div style={{ width: 36, height: 36, borderRadius: 8, background: "var(--violet-10)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, fontSize: 13, fontWeight: 600, color: "var(--violet-60)" }}>{initials(w.name)}</div>
+                  }
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 13, fontWeight: 500, display: "flex", alignItems: "center", gap: 6 }}>
+                      {w.name}
+                      {alreadyInTracker && (
+                        <span style={{ fontSize: 10, background: "var(--orange-10)", color: "var(--orange-70)", padding: "1px 6px", borderRadius: 4, fontWeight: 600 }}>IN TRACKER</span>
+                      )}
+                    </div>
+                    <div style={{ fontSize: 11, color: "var(--gray-60)" }}>{w.phone}{w.email ? ` · ${w.email}` : ""}</div>
+                  </div>
+                  <span className={`badge ${w.bgcClear ? "badge-green" : "badge-orange"}`} style={{ fontSize: 10 }}>
+                    {w.bgcClear ? "BGC Clear" : w.bgcLabel}
+                  </span>
                 </div>
-                <span className={`badge ${w.bgcClear ? "badge-green" : "badge-orange"}`} style={{ fontSize: 10 }}>
-                  {w.bgcClear ? "BGC Clear" : w.bgcLabel}
-                </span>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
@@ -207,7 +399,7 @@ export default function OnsiteTab() {
       ) : (
         <div>
           {/* Worker card */}
-          <div style={{ display: "flex", alignItems: "flex-start", gap: 16, padding: 16, borderRadius: 12, border: "1px solid var(--gray-20)", marginBottom: 20 }}>
+          <div style={{ display: "flex", alignItems: "flex-start", gap: 16, padding: 16, borderRadius: 12, border: "1px solid var(--gray-20)", marginBottom: existingRecord ? 12 : 20 }}>
             {selectedWorker.photoUrl
               ? <img src={selectedWorker.photoUrl} style={{ width: 64, height: 64, borderRadius: 10, objectFit: "cover", flexShrink: 0 }} />
               : <div style={{ width: 64, height: 64, borderRadius: 10, background: "var(--violet-10)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, fontSize: 22, fontWeight: 600, color: "var(--violet-60)" }}>{initials(selectedWorker.name)}</div>
@@ -236,6 +428,52 @@ export default function OnsiteTab() {
               </div>
             </div>
           </div>
+
+          {/* Duplicate warning banner */}
+          {existingRecord && (
+            <div style={{
+              background: "var(--orange-10)", border: "1px solid var(--orange-30)",
+              borderRadius: 10, padding: "12px 16px", marginBottom: 20,
+              display: "flex", alignItems: "flex-start", gap: 12,
+            }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--orange-70)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, marginTop: 1 }}>
+                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+              </svg>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: "var(--orange-70)", marginBottom: 6 }}>
+                  Already in tracker — Tour {existingRecord["Tour Date"] || "unknown date"} · {existingRecord["Schedule"] || "unknown schedule"}
+                </div>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button
+                    type="button"
+                    onClick={() => setEntryMode("create")}
+                    style={{
+                      height: 28, padding: "0 12px", borderRadius: 6, fontSize: 12, fontWeight: 500, cursor: "pointer",
+                      border: "1px solid",
+                      background: entryMode === "create" ? "var(--orange-70)" : "transparent",
+                      color: entryMode === "create" ? "white" : "var(--orange-70)",
+                      borderColor: "var(--orange-70)",
+                    }}
+                  >
+                    Add new entry
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEntryMode("update")}
+                    style={{
+                      height: 28, padding: "0 12px", borderRadius: 6, fontSize: 12, fontWeight: 500, cursor: "pointer",
+                      border: "1px solid",
+                      background: entryMode === "update" ? "var(--orange-70)" : "transparent",
+                      color: entryMode === "update" ? "white" : "var(--orange-70)",
+                      borderColor: "var(--orange-70)",
+                    }}
+                  >
+                    Update existing
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Form */}
           <div className="card">
@@ -322,7 +560,7 @@ export default function OnsiteTab() {
             <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
               <button
                 className="btn btn-primary"
-                onClick={handleSubmit}
+                onClick={handleSubmitDirect}
                 disabled={submitMutation.isPending}
               >
                 {submitMutation.isPending ? <span className="spinner" /> : (
@@ -330,7 +568,17 @@ export default function OnsiteTab() {
                     <polyline points="20 6 9 17 4 12"/>
                   </svg>
                 )}
-                {submitMutation.isPending ? "Submitting…" : "Submit Entry"}
+                {submitMutation.isPending ? "Submitting…" : entryMode === "update" ? "Update Entry" : "Submit Entry"}
+              </button>
+              <button
+                className="btn btn-ghost"
+                onClick={addToQueue}
+                type="button"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+                </svg>
+                Add to Queue
               </button>
             </div>
           </div>
