@@ -201,6 +201,7 @@ export default function GWOpsTab() {
                 <th style={{ width: 40 }}>#</th>
                 <th>Worker</th>
                 <th>Tour Date</th>
+                <th>Onsite Schedule</th>
                 <th>Score</th>
                 <th>DT Clear</th>
                 <th>Doc Signed</th>
@@ -257,6 +258,13 @@ export default function GWOpsTab() {
                       </div>
                     </td>
                     <td>{r["Tour Date"] || "—"}</td>
+                    <td>
+                      {r["Schedule"]
+                        ? String(r["Schedule"]).split(", ").map((s) => (
+                            <span key={s} className="badge badge-violet" style={{ fontSize: 10, marginRight: 4 }}>{s}</span>
+                          ))
+                        : <span style={{ color: "var(--gray-40)", fontSize: 12 }}>—</span>}
+                    </td>
                     <td>
                       {score > 0 ? (
                         <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
