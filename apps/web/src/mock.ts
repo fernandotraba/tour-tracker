@@ -3,8 +3,8 @@ import type { Worker, TourRecord, AuthResponse } from "@tour-tracker/shared";
 export const IS_MOCK = import.meta.env.VITE_MOCK === "true";
 
 export const MOCK_USER: AuthResponse = {
-  email: "carolina@traba.work",
-  name: "Carolina Ops",
+  email: "felix@traba.work",
+  name: "Felix Ops",
   picture: "",
   token: "mock-token",
 };
