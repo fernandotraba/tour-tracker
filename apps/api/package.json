@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@hono/node-server": "^1.19.13",
+    "@neondatabase/serverless": "^1.1.0",
     "@tour-tracker/shared": "workspace:*",
     "googleapis": "^171.4.0",
     "hono": "^4.12.12",

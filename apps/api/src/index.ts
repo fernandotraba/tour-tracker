@@ -7,6 +7,8 @@ import authRoutes from "./routes/auth.js";
 import workerRoutes from "./routes/workers.js";
 import recordRoutes from "./routes/records.js";
 import startListRoutes from "./routes/startList.js";
+import adminRoutes from "./routes/admin.js";
+import { ensureSchema } from "./lib/db.js";
 
 const app = new Hono();
 
@@ -30,6 +32,7 @@ app.use("/api/*", requireAuth);
 app.route("/api/workers", workerRoutes);
 app.route("/api/tour-records", recordRoutes);
 app.route("/api/start-list", startListRoutes);
+app.route("/api/admin", adminRoutes);
 
 // ── Serve frontend ─────────────────────────────────────────────────────────────
 // Production: Railway runs from repo root, so path is apps/web/dist
@@ -42,3 +45,8 @@ const PORT = parseInt(process.env.PORT ?? "3000", 10);
 serve({ fetch: app.fetch, port: PORT }, () => {
   console.log(`Tour Tracker API → http://localhost:${PORT}`);
 });
+
+// Create DB table if it doesn't exist yet (no-op if already there)
+if (process.env.DATABASE_URL) {
+  ensureSchema().catch((e) => console.error("[db schema]", e));
+}
